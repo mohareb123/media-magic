@@ -59,6 +59,39 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_settings: {
+        Row: {
+          admin_password: string
+          created_at: string
+          daily_download_limit: number
+          forced_channel: string | null
+          forced_channel_name: string | null
+          id: number
+          is_forced_subscription_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          admin_password?: string
+          created_at?: string
+          daily_download_limit?: number
+          forced_channel?: string | null
+          forced_channel_name?: string | null
+          id: number
+          is_forced_subscription_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          admin_password?: string
+          created_at?: string
+          daily_download_limit?: number
+          forced_channel?: string | null
+          forced_channel_name?: string | null
+          id?: number
+          is_forced_subscription_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       telegram_bot_state: {
         Row: {
           id: number
