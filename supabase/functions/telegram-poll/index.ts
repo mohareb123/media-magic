@@ -1,6 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-type SupabaseClient = ReturnType<typeof createClient>;
 type TelegramHeaders = Record<string, string>;
 type BotSettings = {
   daily_download_limit?: number;
@@ -105,7 +104,7 @@ Deno.serve(async () => {
 });
 
 async function processIncomingMessage(
-  supabase: SupabaseClient,
+  supabase: any,
   headers: TelegramHeaders,
   settings: BotSettings,
   update: any,
@@ -247,7 +246,7 @@ async function processIncomingMessage(
   }
 }
 
-async function storeUserAndMessage(supabase: SupabaseClient, update: any, msg: any, rawText: string) {
+async function storeUserAndMessage(supabase: any, update: any, msg: any, rawText: string) {
   if (msg.from) {
     await supabase.from('telegram_users').upsert(
       {
@@ -308,7 +307,7 @@ function extractUrl(text: string) {
 }
 
 async function attemptDownload(
-  supabase: SupabaseClient,
+  supabase: any,
   headers: TelegramHeaders,
   chatId: number,
   userId: number,
@@ -405,7 +404,7 @@ async function tryDownloadWithCobalt(url: string): Promise<DownloadResult | null
   return null;
 }
 
-async function tryTikTokDownload(url: string, platform: { name: string }) {
+async function tryTikTokDownload(url: string, platform: { name: string }): Promise<DownloadResult | null> {
   if (platform.name !== 'TikTok') return null;
   try {
     const resp = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`, {
@@ -431,7 +430,7 @@ async function tryTikTokDownload(url: string, platform: { name: string }) {
   return null;
 }
 
-async function tryInstagramDownload(url: string, platform: { name: string }) {
+async function tryInstagramDownload(url: string, platform: { name: string }): Promise<DownloadResult | null> {
   if (platform.name !== 'Instagram') return null;
   try {
     const resp = await fetch(`https://api.saveig.app/api/v1/get-media?url=${encodeURIComponent(url)}`, {
@@ -452,7 +451,7 @@ async function tryInstagramDownload(url: string, platform: { name: string }) {
   return null;
 }
 
-async function tryYoutubeDownload(url: string, platform: { name: string }) {
+async function tryYoutubeDownload(url: string, platform: { name: string }): Promise<DownloadResult | null> {
   if (platform.name !== 'YouTube') return null;
   try {
     const resp = await fetch(url, {
