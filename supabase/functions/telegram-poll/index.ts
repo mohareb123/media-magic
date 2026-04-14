@@ -151,7 +151,7 @@ async function processIncomingMessage(
       `🎬 أهلاً بك في ABU ALAZ PLATFORM\n\nأرسل رابط فيديو أو صورة أو صوت لأبدأ التحميل.\n\nفي المجموعات: أرسل الرابط مع منشن @${BOT_USERNAME} أو عطّل Privacy Mode من BotFather ليقرأ الروابط مباشرة.`,
     );
 
-    if (userId !== DEVELOPER_CHAT_ID && msg.chat.type === 'private') {
+    if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID && msg.chat.type === 'private') {
       const fullName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'بدون اسم';
       const username = msg.from?.username ? `@${msg.from.username}` : 'بدون يوزرنيم';
       await sendMessage(headers, DEVELOPER_CHAT_ID, `🆕 مستخدم جديد\n👤 ${fullName}\n🔗 ${username}\n🆔 ${userId}`);
@@ -234,7 +234,7 @@ async function processIncomingMessage(
 
   await sendMessage(headers, chatId, `🔍 جاري تجهيز ${platform.emoji} ${platform.name} ...`);
 
-  if (userId !== DEVELOPER_CHAT_ID) {
+  if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID) {
     await sendMessage(headers, DEVELOPER_CHAT_ID, `📥 طلب تحميل جديد\n👤 ${userId}\n📌 ${platform.name}\n🔗 ${url}`);
   }
 
@@ -357,7 +357,7 @@ async function attemptDownload(
     await sendMessage(headers, chatId, '❌ حدث خطأ أثناء التحميل.');
   }
 
-  if (userId !== DEVELOPER_CHAT_ID) {
+  if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID) {
     await sendMessage(headers, DEVELOPER_CHAT_ID, `✅ انتهت معالجة طلب ${userId}`);
   }
 }

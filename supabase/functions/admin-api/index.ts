@@ -141,9 +141,13 @@ function timingSafeEqual(a: string, b: string): boolean {
   const aBuf = encoder.encode(a);
   const bBuf = encoder.encode(b);
   if (aBuf.length !== bBuf.length) {
-    // Compare against self to keep constant time, but return false
-    const dummy = new Uint8Array(aBuf.length);
-    crypto.subtle.timingSafeEqual?.(aBuf, dummy);
+    // Pad both to the same length and compare, but always return false
+    const maxLen = Math.max(aBuf.length, bBuf.length);
+    const paddedA = new Uint8Array(maxLen);
+    const paddedB = new Uint8Array(maxLen);
+    paddedA.set(aBuf);
+    paddedB.set(bBuf);
+    try { crypto.subtle.timingSafeEqual(paddedA, paddedB); } catch { /* ignore */ }
     return false;
   }
   // Use Web Crypto timing-safe comparison if available (Deno supports this)
