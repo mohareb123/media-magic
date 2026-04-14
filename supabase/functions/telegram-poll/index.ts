@@ -25,8 +25,8 @@ declare global {
 const GATEWAY_URL = 'https://connector-gateway.lovable.dev/telegram';
 const MAX_RUNTIME_MS = 25_000;
 const LONG_POLL_TIMEOUT_SECONDS = 20;
-const DEVELOPER_CHAT_ID = 6570434162;
-const BOT_USERNAME = 'Sarhny01bot';
+const DEVELOPER_CHAT_ID = Number(Deno.env.get('DEVELOPER_CHAT_ID') || '0');
+const BOT_USERNAME = Deno.env.get('BOT_USERNAME') || 'Sarhny01bot';
 
 Deno.serve(async () => {
   try {
@@ -99,7 +99,7 @@ Deno.serve(async () => {
     return jsonResponse({ ok: true, processed, finalOffset: currentOffset }, 200);
   } catch (error) {
     console.error('telegram-poll fatal error', error);
-    return jsonResponse({ error: String(error) }, 500);
+    return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
 
@@ -151,7 +151,7 @@ async function processIncomingMessage(
       `🎬 أهلاً بك في ABU ALAZ PLATFORM\n\nأرسل رابط فيديو أو صورة أو صوت لأبدأ التحميل.\n\nفي المجموعات: أرسل الرابط مع منشن @${BOT_USERNAME} أو عطّل Privacy Mode من BotFather ليقرأ الروابط مباشرة.`,
     );
 
-    if (userId !== DEVELOPER_CHAT_ID && msg.chat.type === 'private') {
+    if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID && msg.chat.type === 'private') {
       const fullName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'بدون اسم';
       const username = msg.from?.username ? `@${msg.from.username}` : 'بدون يوزرنيم';
       await sendMessage(headers, DEVELOPER_CHAT_ID, `🆕 مستخدم جديد\n👤 ${fullName}\n🔗 ${username}\n🆔 ${userId}`);
@@ -234,7 +234,7 @@ async function processIncomingMessage(
 
   await sendMessage(headers, chatId, `🔍 جاري تجهيز ${platform.emoji} ${platform.name} ...`);
 
-  if (userId !== DEVELOPER_CHAT_ID) {
+  if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID) {
     await sendMessage(headers, DEVELOPER_CHAT_ID, `📥 طلب تحميل جديد\n👤 ${userId}\n📌 ${platform.name}\n🔗 ${url}`);
   }
 
@@ -303,7 +303,9 @@ function normalizeCommand(text: string) {
 
 function extractUrl(text: string) {
   const match = text.match(/https?:\/\/[^\s]+/i);
-  return match?.[0] ?? null;
+  const url = match?.[0] ?? null;
+  if (url && !isSafeUrl(url)) return null;
+  return url;
 }
 
 async function attemptDownload(
@@ -355,7 +357,7 @@ async function attemptDownload(
     await sendMessage(headers, chatId, '❌ حدث خطأ أثناء التحميل.');
   }
 
-  if (userId !== DEVELOPER_CHAT_ID) {
+  if (DEVELOPER_CHAT_ID && userId !== DEVELOPER_CHAT_ID) {
     await sendMessage(headers, DEVELOPER_CHAT_ID, `✅ انتهت معالجة طلب ${userId}`);
   }
 }
@@ -602,6 +604,35 @@ function detectPlatform(url: string): { name: string; emoji: string } | null {
   }
 
   return null;
+}
+
+function isSafeUrl(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    // Only allow http and https
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname;
+    // Block private/internal IP ranges and metadata endpoints
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      hostname.startsWith('[') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('169.254.') ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.local') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function jsonResponse(data: Record<string, unknown>, status = 200) {
