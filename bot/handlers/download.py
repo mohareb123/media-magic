@@ -1,5 +1,6 @@
 """Download handlers for processing media URLs."""
 
+import asyncio
 import hashlib
 import html
 
@@ -24,9 +25,9 @@ from bot.utils.url_resolver import resolve_url, is_shortened_url
 _pending_urls: dict[str, dict[str, str | None]] = {}
 
 
-def _store_url(url: str, platform: str | None) -> str:
+def _store_url(url: str, platform: str | None, user_id: int) -> str:
     """Store a URL and return a short key for callback_data."""
-    key = hashlib.md5(url.encode()).hexdigest()[:8]
+    key = hashlib.md5(f"{user_id}:{url}".encode()).hexdigest()[:8]
     _pending_urls[key] = {"url": url, "platform": platform}
     return key
 
@@ -80,17 +81,17 @@ async def handle_url_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     url = urls[0]  # Process the first URL
 
-    # Resolve shortened URLs (bit.ly, tinyurl, etc.)
+    # Resolve shortened URLs (bit.ly, tinyurl, etc.) in executor to avoid blocking
     if is_shortened_url(url):
         logger.info("Resolving shortened URL: %s", url)
-        url = resolve_url(url)
+        url = await asyncio.get_event_loop().run_in_executor(None, resolve_url, url)
 
     # Enhanced platform detection with regex validation
     validation = validate_and_detect(url)
     platform = validation.platform or detect_platform(url)
 
     # Store URL with a unique key tied to this specific link
-    url_key = _store_url(url, platform)
+    url_key = _store_url(url, platform, user.id)
 
     platform_name = platform.title() if platform else "Unknown"
     # Add content type info if available

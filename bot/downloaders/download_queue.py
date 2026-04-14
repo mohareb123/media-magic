@@ -9,10 +9,8 @@ import time
 from collections import deque
 from typing import Any, Callable, Coroutine
 
+from bot.config import MAX_CONCURRENT_DOWNLOADS
 from bot.utils.logger import logger
-
-# Maximum concurrent downloads
-MAX_CONCURRENT_DOWNLOADS = 3
 
 # Queue statistics
 _stats = {
