@@ -1,5 +1,7 @@
 """Admin command handlers for bot management."""
 
+import html
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -79,6 +81,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     reason = " ".join(context.args[1:]) if len(context.args) > 1 else "No reason provided"
+    safe_reason = html.escape(reason)
 
     if ban_user(target_user_id, reason):
         log_admin_action(
@@ -89,7 +92,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         await update.message.reply_text(
             f"\u2705 User <code>{target_user_id}</code> has been banned.\n"
-            f"Reason: {reason}",
+            f"Reason: {safe_reason}",
             parse_mode="HTML",
         )
         logger.info(
@@ -163,6 +166,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     broadcast_text = " ".join(context.args)
+    safe_broadcast = html.escape(broadcast_text)
     user_ids = get_all_user_ids()
 
     sent = 0
@@ -176,7 +180,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"\U0001f4e2 <b>Announcement</b>\n\n{broadcast_text}",
+                text=f"\U0001f4e2 <b>Announcement</b>\n\n{safe_broadcast}",
                 parse_mode="HTML",
             )
             sent += 1
@@ -193,7 +197,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"\U0001f4e2 <b>Broadcast Complete</b>\n\n"
         f"\u2705 Sent: {sent}\n"
         f"\u274c Failed: {failed}\n"
-        f"\U0001f4ac Message: {broadcast_text[:100]}",
+        f"\U0001f4ac Message: {safe_broadcast[:100]}",
         parse_mode="HTML",
     )
     logger.info(
