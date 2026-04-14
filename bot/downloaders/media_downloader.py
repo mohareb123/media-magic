@@ -265,7 +265,7 @@ class MediaDownloader:
                         dl_dir = DOWNLOAD_DIR
                         media_id = info.get("id", "")
                         for f in dl_dir.iterdir():
-                            if media_id in f.name and f.suffix in (".jpg", ".png", ".webp"):
+                            if media_id and media_id in f.name and f.suffix in (".jpg", ".png", ".webp"):
                                 downloaded_file = str(f)
                                 break
                 else:
@@ -277,7 +277,7 @@ class MediaDownloader:
                         # Fallback: search download dir
                         media_id = info.get("id", "")
                         for f in DOWNLOAD_DIR.iterdir():
-                            if media_id in f.name:
+                            if media_id and media_id in f.name:
                                 downloaded_file = str(f)
                                 break
 

@@ -22,7 +22,7 @@ def detect_platform(url: str) -> str | None:
 
     for platform, domains in SUPPORTED_PLATFORMS.items():
         for d in domains:
-            if d in domain:
+            if domain == d or domain.endswith("." + d):
                 return platform
     return None
 

@@ -1,6 +1,7 @@
 """Download handlers for processing media URLs."""
 
 import hashlib
+import html
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -196,6 +197,8 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         quality=quality,
     )
 
+    result_file_path: str | None = None
+
     try:
         # Execute the download
         if media_type == "audio":
@@ -205,11 +208,15 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             result = await downloader.download_video(url, quality=quality, user_id=user_id)
 
+        if result.success and result.file_path:
+            result_file_path = result.file_path
+
         if not result.success:
             update_download_status(download_id, "failed", error_message=result.error)
+            safe_error = html.escape(result.error or "Unknown error")
             await query.edit_message_text(
                 f"\u274c <b>Download Failed</b>\n\n"
-                f"Error: {result.error}",
+                f"Error: {safe_error}",
                 parse_mode="HTML",
             )
             logger.warning(
@@ -222,8 +229,9 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         # Send the file
         file_size_text = format_file_size(result.file_size)
+        safe_title = html.escape(result.title)
         caption = (
-            f"\U0001f4e5 <b>{result.title}</b>\n"
+            f"\U0001f4e5 <b>{safe_title}</b>\n"
             f"\U0001f4c1 Size: {file_size_text}"
         )
         if result.duration and media_type != "photo":
@@ -294,13 +302,19 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     except Exception as e:
         update_download_status(download_id, "failed", error_message=str(e))
-        await query.edit_message_text(
-            f"\u274c <b>Download Failed</b>\n\n"
-            f"An unexpected error occurred. Please try again later.",
-            parse_mode="HTML",
-        )
+        try:
+            await query.edit_message_text(
+                "\u274c <b>Download Failed</b>\n\n"
+                "An unexpected error occurred. Please try again later.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
         logger.error(
             "Unexpected error downloading for user %s: %s", user_id, e, exc_info=True
         )
+        # Cleanup file on error
+        if result_file_path:
+            downloader.cleanup_file(result_file_path)
     finally:
         _remove_url(url_key)

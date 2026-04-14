@@ -1,5 +1,7 @@
 """Start and help command handlers."""
 
+import html
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -35,7 +37,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    user_name = update.effective_user.first_name or "User"
+    user_name = html.escape(update.effective_user.first_name or "User")
 
     welcome_text = (
         f"\U0001f44b Welcome, <b>{user_name}</b>!\n\n"
