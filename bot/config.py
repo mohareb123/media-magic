@@ -61,3 +61,11 @@ LOG_FILE = LOG_DIR / "bot.log"
 
 # PO Token server URL for YouTube (optional)
 POT_SERVER_URL = os.getenv("POT_SERVER_URL", "")
+
+# Browser automation for YouTube cookie extraction (optional)
+BROWSER_COOKIES_ENABLED = os.getenv("BROWSER_COOKIES_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+BROWSER_COOKIES_PATH = BASE_DIR / "data" / "youtube_cookies.txt"

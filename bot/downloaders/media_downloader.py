@@ -11,6 +11,7 @@ import yt_dlp
 from bot.config import (
     AUDIO_FORMAT,
     AUDIO_QUALITY,
+    BROWSER_COOKIES_ENABLED,
     COOKIES_FILE,
     DOWNLOAD_DIR,
     DOWNLOAD_TIMEOUT,
@@ -18,6 +19,7 @@ from bot.config import (
     POT_SERVER_URL,
     VIDEO_QUALITIES,
 )
+from bot.downloaders.browser_cookies import extract_youtube_cookies_sync, get_cached_cookie_path
 from bot.utils.helpers import sanitize_filename
 from bot.utils.logger import logger
 
@@ -72,9 +74,14 @@ class MediaDownloader:
             },
         }
 
-        # Add cookies file if configured
+        # Add cookies file if configured (manual takes priority)
         if COOKIES_FILE and os.path.exists(COOKIES_FILE):
             opts["cookiefile"] = COOKIES_FILE
+        elif BROWSER_COOKIES_ENABLED:
+            # Use browser-extracted cookies if available
+            cached = get_cached_cookie_path()
+            if cached:
+                opts["cookiefile"] = cached
 
         return opts
 
@@ -332,14 +339,23 @@ class MediaDownloader:
                     error="This content is unavailable or has been removed.",
                     media_type=media_type,
                 )
-            # YouTube bot detection - provide helpful message
+            # YouTube bot detection - try browser cookie extraction
             if "Sign in to confirm" in error_msg or "confirm you're not a bot" in error_msg:
+                if BROWSER_COOKIES_ENABLED and not opts.get("_browser_cookies_attempted"):
+                    logger.info("YouTube bot detection triggered — attempting browser cookie extraction")
+                    cookie_path = extract_youtube_cookies_sync()
+                    if cookie_path:
+                        opts["cookiefile"] = cookie_path
+                        opts["_browser_cookies_attempted"] = True
+                        return self._sync_download(url, opts, media_type)
                 return DownloadResult(
                     success=False,
                     error=(
                         "\u26a0\ufe0f YouTube requires authentication from this server.\n\n"
-                        "The bot owner needs to provide a cookies.txt file "
-                        "to enable YouTube downloads.\n\n"
+                        "Browser cookie extraction was attempted but YouTube "
+                        "still blocked the request.\n\n"
+                        "The bot owner can provide a cookies.txt file "
+                        "from a logged-in browser to enable YouTube downloads.\n\n"
                         "Other platforms (TikTok, Instagram, etc.) work normally!"
                     ),
                     media_type=media_type,
