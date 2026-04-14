@@ -212,6 +212,23 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
+async def _edit_callback_text(query, text: str) -> None:
+    """Edit callback message text or caption depending on message type.
+
+    Photo messages (from /start with bot logo) have captions, not text.
+    Attempting edit_message_text on a photo raises BadRequest.
+    """
+    try:
+        await query.edit_message_text(text, parse_mode="HTML")
+    except Exception:
+        try:
+            await query.edit_message_caption(caption=text, parse_mode="HTML")
+        except Exception:
+            # If both fail, send a new message instead
+            if query.message and query.message.chat:
+                await query.message.chat.send_message(text, parse_mode="HTML")
+
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle inline button callbacks for start menu."""
     query = update.callback_query
@@ -228,17 +245,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "4\ufe0f\u20e3 Wait for the download to complete\n\n"
             "Use /help for the full help guide."
         )
-        await query.edit_message_text(help_text, parse_mode="HTML")
+        await _edit_callback_text(query, help_text)
 
     elif query.data == "platforms":
-        await query.edit_message_text(
+        await _edit_callback_text(
+            query,
             "\U0001f310 <b>Supported Platforms:</b>\n\n"
             "\u25b6\ufe0f YouTube \u2022 \U0001f3b5 TikTok \u2022 \U0001f4f7 Instagram\n"
             "\U0001f4d8 Facebook \u2022 \U0001f426 Twitter/X \u2022 \U0001f4cc Pinterest\n"
             "\U0001f916 Reddit \u2022 \U0001f3ac Vimeo \u2022 \U0001f4fa Dailymotion\n"
             "\u2601\ufe0f SoundCloud\n\n"
             "Use /platforms for full details.",
-            parse_mode="HTML",
         )
 
     elif query.data == "my_stats":
@@ -251,9 +268,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     (query.from_user.id,),
                 ).fetchone()
             total = user["total_downloads"] if user else 0
-            await query.edit_message_text(
+            await _edit_callback_text(
+                query,
                 f"\U0001f4ca <b>Your Stats:</b>\n\n"
                 f"\U0001f4e5 Total Downloads: <b>{total}</b>\n\n"
                 f"Use /mystats for more details.",
-                parse_mode="HTML",
             )
