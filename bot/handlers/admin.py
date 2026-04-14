@@ -225,7 +225,7 @@ async def recent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     text = "\U0001f4cb <b>Recent Downloads</b>\n\n"
     for d in downloads:
-        user_display = d.get("username") or d.get("first_name") or str(d["user_id"])
+        user_display = html.escape(d.get("username") or d.get("first_name") or str(d["user_id"]))
         status_icon = "\u2705" if d["status"] == "completed" else "\u274c"
         platform = (d.get("platform") or "unknown").title()
         created = d["created_at"][:16].replace("T", " ")
