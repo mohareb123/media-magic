@@ -1,5 +1,7 @@
 """Download handlers for processing media URLs."""
 
+import hashlib
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
@@ -14,6 +16,29 @@ from bot.database.db import (
 from bot.downloaders.media_downloader import downloader
 from bot.utils.helpers import extract_urls, detect_platform, format_file_size
 from bot.utils.logger import logger
+
+# In-memory URL store keyed by short hash to avoid callback_data size limits
+_pending_urls: dict[str, dict[str, str | None]] = {}
+
+
+def _store_url(url: str, platform: str | None) -> str:
+    """Store a URL and return a short key for callback_data."""
+    key = hashlib.md5(url.encode()).hexdigest()[:8]
+    _pending_urls[key] = {"url": url, "platform": platform}
+    return key
+
+
+def _get_url(key: str) -> tuple[str | None, str | None]:
+    """Retrieve a stored URL by key."""
+    entry = _pending_urls.get(key)
+    if entry:
+        return entry["url"], entry["platform"]
+    return None, None
+
+
+def _remove_url(key: str) -> None:
+    """Remove a stored URL entry."""
+    _pending_urls.pop(key, None)
 
 
 async def handle_url_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,42 +78,41 @@ async def handle_url_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     url = urls[0]  # Process the first URL
     platform = detect_platform(url)
 
-    # Store URL in user_data for callback handlers
-    context.user_data["current_url"] = url
-    context.user_data["current_platform"] = platform
+    # Store URL with a unique key tied to this specific link
+    url_key = _store_url(url, platform)
 
     platform_name = platform.title() if platform else "Unknown"
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "\U0001f3ac Video (Best)", callback_data="dl_video_best"
+                "\U0001f3ac Video (Best)", callback_data=f"dl_{url_key}_video_best"
             ),
             InlineKeyboardButton(
-                "\U0001f3b5 Audio (MP3)", callback_data="dl_audio"
+                "\U0001f3b5 Audio (MP3)", callback_data=f"dl_{url_key}_audio"
             ),
         ],
         [
             InlineKeyboardButton(
-                "\U0001f4f9 1080p", callback_data="dl_video_1080p"
+                "\U0001f4f9 1080p", callback_data=f"dl_{url_key}_video_1080p"
             ),
             InlineKeyboardButton(
-                "\U0001f4f9 720p", callback_data="dl_video_720p"
+                "\U0001f4f9 720p", callback_data=f"dl_{url_key}_video_720p"
             ),
             InlineKeyboardButton(
-                "\U0001f4f9 480p", callback_data="dl_video_480p"
+                "\U0001f4f9 480p", callback_data=f"dl_{url_key}_video_480p"
             ),
         ],
         [
             InlineKeyboardButton(
-                "\U0001f4f9 360p", callback_data="dl_video_360p"
+                "\U0001f4f9 360p", callback_data=f"dl_{url_key}_video_360p"
             ),
             InlineKeyboardButton(
-                "\U0001f5bc Thumbnail", callback_data="dl_thumbnail"
+                "\U0001f5bc Thumbnail", callback_data=f"dl_{url_key}_thumbnail"
             ),
         ],
         [
-            InlineKeyboardButton("\u274c Cancel", callback_data="dl_cancel"),
+            InlineKeyboardButton("\u274c Cancel", callback_data=f"dl_{url_key}_cancel"),
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -118,13 +142,20 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     await query.answer()
 
-    if query.data == "dl_cancel":
-        await query.edit_message_text("\u274c Download cancelled.")
-        context.user_data.clear()
+    # Parse callback data: dl_{url_key}_{action}
+    parts = query.data.split("_", 2)  # ["dl", url_key, action_rest]
+    if len(parts) < 3:
         return
 
-    url = context.user_data.get("current_url")
-    platform = context.user_data.get("current_platform")
+    url_key = parts[1]
+    action = parts[2]
+
+    if action == "cancel":
+        _remove_url(url_key)
+        await query.edit_message_text("\u274c Download cancelled.")
+        return
+
+    url, platform = _get_url(url_key)
 
     if not url:
         await query.edit_message_text(
@@ -135,17 +166,17 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = query.from_user.id
 
     # Determine download type and quality
-    if query.data == "dl_audio":
+    if action == "audio":
         media_type = "audio"
         quality = "best"
         status_text = "\U0001f3b5 Downloading audio..."
-    elif query.data == "dl_thumbnail":
+    elif action == "thumbnail":
         media_type = "photo"
         quality = "best"
         status_text = "\U0001f5bc Downloading thumbnail..."
     else:
         media_type = "video"
-        quality = query.data.replace("dl_video_", "")
+        quality = action.replace("video_", "")
         quality_label = quality.upper() if quality != "best" else "Best Quality"
         status_text = f"\U0001f3ac Downloading video ({quality_label})..."
 
@@ -254,5 +285,4 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             "Unexpected error downloading for user %s: %s", user_id, e, exc_info=True
         )
     finally:
-        context.user_data.pop("current_url", None)
-        context.user_data.pop("current_platform", None)
+        _remove_url(url_key)
