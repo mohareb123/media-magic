@@ -1,7 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGIN = Deno.env.get('ADMIN_CORS_ORIGIN') || '*';
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-admin-password',
 };
 
@@ -17,11 +19,12 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const action = url.searchParams.get('action');
 
-  // Simple admin auth via password in header
-  const adminPass = req.headers.get('x-admin-password');
-  const { data: settings } = await supabase.from('bot_settings').select('admin_password').eq('id', 1).single();
+  // Admin auth via password in header (timing-safe comparison)
+  const adminPass = req.headers.get('x-admin-password') || '';
+  const { data: authSettings } = await supabase.from('bot_settings').select('admin_password').eq('id', 1).single();
+  const storedPass = authSettings?.admin_password || '';
 
-  if (adminPass !== settings?.admin_password) {
+  if (!timingSafeEqual(adminPass, storedPass)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -72,18 +75,27 @@ Deno.serve(async (req) => {
       }
 
       case 'settings': {
-        const { data } = await supabase.from('bot_settings').select('*').eq('id', 1).single();
+        const { data } = await supabase.from('bot_settings').select(
+          'id, forced_channel, forced_channel_name, is_forced_subscription_enabled, daily_download_limit, created_at, updated_at'
+        ).eq('id', 1).single();
         result = { settings: data };
         break;
       }
 
       case 'update-settings': {
         const body = await req.json();
+        const dailyLimit = Math.max(1, Math.min(1000, Number(body.daily_download_limit) || 10));
+        const forcedChannel = typeof body.forced_channel === 'string'
+          ? body.forced_channel.trim().slice(0, 100)
+          : null;
+        const forcedChannelName = typeof body.forced_channel_name === 'string'
+          ? body.forced_channel_name.trim().slice(0, 100)
+          : null;
         const { error } = await supabase.from('bot_settings').update({
-          forced_channel: body.forced_channel ?? null,
-          forced_channel_name: body.forced_channel_name ?? null,
-          is_forced_subscription_enabled: body.is_forced_subscription_enabled ?? false,
-          daily_download_limit: body.daily_download_limit ?? 10,
+          forced_channel: forcedChannel,
+          forced_channel_name: forcedChannelName,
+          is_forced_subscription_enabled: Boolean(body.is_forced_subscription_enabled),
+          daily_download_limit: dailyLimit,
         }).eq('id', 1);
         if (error) throw error;
         result = { success: true };
@@ -117,8 +129,32 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error('Admin API error:', e);
-    return new Response(JSON.stringify({ error: String(e) }), {
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length === 0 && b.length === 0) return false;
+  const encoder = new TextEncoder();
+  const aBuf = encoder.encode(a);
+  const bBuf = encoder.encode(b);
+  if (aBuf.length !== bBuf.length) {
+    // Compare against self to keep constant time, but return false
+    const dummy = new Uint8Array(aBuf.length);
+    crypto.subtle.timingSafeEqual?.(aBuf, dummy);
+    return false;
+  }
+  // Use Web Crypto timing-safe comparison if available (Deno supports this)
+  try {
+    return crypto.subtle.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    // Fallback: constant-time comparison
+    let mismatch = 0;
+    for (let i = 0; i < aBuf.length; i++) {
+      mismatch |= aBuf[i] ^ bBuf[i];
+    }
+    return mismatch === 0;
+  }
+}
