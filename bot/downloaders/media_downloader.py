@@ -177,7 +177,7 @@ class MediaDownloader:
         if self._is_youtube_url(url):
             opts.update(self._get_youtube_opts())
 
-        return await self._execute_download(url, opts, "video")
+        return await self._execute_download(url, opts, "video", user_id)
 
     async def download_audio(self, url: str, user_id: int = 0) -> DownloadResult:
         """Download audio (MP3) from a URL."""
@@ -203,7 +203,7 @@ class MediaDownloader:
         if self._is_youtube_url(url):
             opts.update(self._get_youtube_opts())
 
-        return await self._execute_download(url, opts, "audio")
+        return await self._execute_download(url, opts, "audio", user_id)
 
     async def download_thumbnail(self, url: str, user_id: int = 0) -> DownloadResult:
         """Download the thumbnail/image from a URL."""
@@ -229,10 +229,10 @@ class MediaDownloader:
         if self._is_youtube_url(url):
             opts.update(self._get_youtube_opts())
 
-        return await self._execute_download(url, opts, "photo")
+        return await self._execute_download(url, opts, "photo", user_id)
 
     async def _execute_download(
-        self, url: str, opts: dict[str, Any], media_type: str
+        self, url: str, opts: dict[str, Any], media_type: str, user_id: int = 0
     ) -> DownloadResult:
         """Execute the download with timeout and fallback scraper."""
         try:
@@ -247,7 +247,7 @@ class MediaDownloader:
             if not result.success and FALLBACK_SCRAPER_ENABLED:
                 logger.info("yt-dlp failed for %s, trying fallback scraper", url)
                 fallback = await asyncio.get_event_loop().run_in_executor(
-                    None, self._fallback_download, url, media_type, 0
+                    None, self._fallback_download, url, media_type, user_id
                 )
                 if fallback.success:
                     return fallback

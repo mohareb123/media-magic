@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import html
+import time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -21,14 +22,31 @@ from bot.utils.helpers import extract_urls, detect_platform, validate_and_detect
 from bot.utils.logger import logger
 from bot.utils.url_resolver import resolve_url, is_shortened_url
 
-# In-memory URL store keyed by short hash to avoid callback_data size limits
-_pending_urls: dict[str, dict[str, str | None]] = {}
+# In-memory URL store keyed by short hash to avoid callback_data size limits.
+# Each entry includes a timestamp for TTL-based eviction.
+_pending_urls: dict[str, dict[str, str | None | float]] = {}
+_PENDING_URL_TTL = 1800  # 30 minutes
+_PENDING_URL_MAX = 500  # hard cap on entries
+
+
+def _evict_expired_urls() -> None:
+    """Remove entries older than _PENDING_URL_TTL."""
+    now = time.monotonic()
+    expired = [k for k, v in _pending_urls.items() if now - (v.get("_ts") or 0) > _PENDING_URL_TTL]
+    for k in expired:
+        _pending_urls.pop(k, None)
 
 
 def _store_url(url: str, platform: str | None, user_id: int) -> str:
     """Store a URL and return a short key for callback_data."""
+    _evict_expired_urls()
+    # If still over the cap, drop the oldest entries
+    if len(_pending_urls) >= _PENDING_URL_MAX:
+        sorted_keys = sorted(_pending_urls, key=lambda k: _pending_urls[k].get("_ts") or 0)
+        for k in sorted_keys[: len(_pending_urls) - _PENDING_URL_MAX + 1]:
+            _pending_urls.pop(k, None)
     key = hashlib.md5(f"{user_id}:{url}".encode()).hexdigest()[:8]
-    _pending_urls[key] = {"url": url, "platform": platform}
+    _pending_urls[key] = {"url": url, "platform": platform, "_ts": time.monotonic()}
     return key
 
 
