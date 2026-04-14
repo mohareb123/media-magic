@@ -78,6 +78,9 @@ _USER_AGENTS = [
     ),
 ]
 
+# User-agent rotation index
+_ua_index = 0
+
 # Proxy list (loaded from config or environment)
 _proxies: list[str] = []
 _proxy_index = 0
@@ -92,8 +95,10 @@ def get_random_user_agent() -> str:
 
 def get_rotating_user_agent() -> str:
     """Return user agents in a round-robin fashion."""
-    index = int(time.time()) % len(_USER_AGENTS)
-    return _USER_AGENTS[index]
+    global _ua_index
+    ua = _USER_AGENTS[_ua_index % len(_USER_AGENTS)]
+    _ua_index += 1
+    return ua
 
 
 def set_proxies(proxy_list: list[str]) -> None:
