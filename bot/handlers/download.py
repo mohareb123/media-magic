@@ -14,9 +14,11 @@ from bot.database.db import (
     upsert_user,
     get_user_download_count_today,
 )
+from bot.downloaders.download_queue import DownloadTask, download_queue
 from bot.downloaders.media_downloader import downloader
-from bot.utils.helpers import extract_urls, detect_platform, format_file_size
+from bot.utils.helpers import extract_urls, detect_platform, validate_and_detect, format_file_size
 from bot.utils.logger import logger
+from bot.utils.url_resolver import resolve_url, is_shortened_url
 
 # In-memory URL store keyed by short hash to avoid callback_data size limits
 _pending_urls: dict[str, dict[str, str | None]] = {}
@@ -77,12 +79,23 @@ async def handle_url_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
     url = urls[0]  # Process the first URL
-    platform = detect_platform(url)
+
+    # Resolve shortened URLs (bit.ly, tinyurl, etc.)
+    if is_shortened_url(url):
+        logger.info("Resolving shortened URL: %s", url)
+        url = resolve_url(url)
+
+    # Enhanced platform detection with regex validation
+    validation = validate_and_detect(url)
+    platform = validation.platform or detect_platform(url)
 
     # Store URL with a unique key tied to this specific link
     url_key = _store_url(url, platform)
 
     platform_name = platform.title() if platform else "Unknown"
+    # Add content type info if available
+    if validation.url_type and validation.url_type not in ("video", "audio"):
+        platform_name += f" ({validation.url_type.title()})"
 
     keyboard = [
         [
@@ -181,10 +194,16 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         quality_label = quality.upper() if quality != "best" else "Best Quality"
         status_text = f"\U0001f3ac Downloading video ({quality_label})..."
 
+    # Show queue position if downloads are active
+    active = download_queue.get_active_count()
+    queue_info = ""
+    if active >= 2:
+        queue_info = f"\n\U0001f4cb Queue position: {active + 1}"
+
     # Update message to show progress
     await query.edit_message_text(
         f"{status_text}\n\n"
-        f"\u23f3 Please wait, this may take a moment...",
+        f"\u23f3 Please wait, this may take a moment...{queue_info}",
         parse_mode="HTML",
     )
 
@@ -200,13 +219,23 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     result_file_path: str | None = None
 
     try:
-        # Execute the download
-        if media_type == "audio":
-            result = await downloader.download_audio(url, user_id=user_id)
-        elif media_type == "photo":
-            result = await downloader.download_thumbnail(url, user_id=user_id)
-        else:
-            result = await downloader.download_video(url, quality=quality, user_id=user_id)
+        # Build the download coroutine
+        async def _do_download():
+            if media_type == "audio":
+                return await downloader.download_audio(url, user_id=user_id)
+            elif media_type == "photo":
+                return await downloader.download_thumbnail(url, user_id=user_id)
+            else:
+                return await downloader.download_video(url, quality=quality, user_id=user_id)
+
+        # Execute via the download queue (concurrency-controlled)
+        task = DownloadTask(
+            task_id=f"{user_id}_{url_key}",
+            user_id=user_id,
+            url=url,
+            download_fn=_do_download,
+        )
+        result = await download_queue.submit(task)
 
         if result.success and result.file_path:
             result_file_path = result.file_path

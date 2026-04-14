@@ -1,4 +1,9 @@
-"""Unified media downloader using yt-dlp for all platforms."""
+"""Unified media downloader using yt-dlp for all platforms.
+
+Primary engine: yt-dlp
+Fallback: BeautifulSoup scraper for direct media URL extraction
+Features: proxy rotation, user-agent spoofing, async download queue
+"""
 
 import os
 import asyncio
@@ -6,6 +11,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import requests
 import yt_dlp
 
 from bot.config import (
@@ -15,13 +21,22 @@ from bot.config import (
     COOKIES_FILE,
     DOWNLOAD_DIR,
     DOWNLOAD_TIMEOUT,
+    FALLBACK_SCRAPER_ENABLED,
     MAX_FILE_SIZE,
     POT_SERVER_URL,
+    PROXY_FILE,
     VIDEO_QUALITIES,
 )
 from bot.downloaders.browser_cookies import extract_youtube_cookies_sync, get_cached_cookie_path
+from bot.downloaders.fallback_scraper import scrape_media_urls
 from bot.utils.helpers import sanitize_filename
 from bot.utils.logger import logger
+from bot.utils.proxy_manager import (
+    get_yt_dlp_proxy_opts,
+    load_proxies_from_file,
+    report_proxy_failure,
+    report_proxy_success,
+)
 
 
 class DownloadResult:
@@ -54,9 +69,15 @@ class MediaDownloader:
     def __init__(self) -> None:
         DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         self._node_path = shutil.which("node")
+        # Load proxies from file if configured
+        if PROXY_FILE and os.path.exists(PROXY_FILE):
+            load_proxies_from_file(PROXY_FILE)
 
     def _get_base_opts(self) -> dict[str, Any]:
         """Get base yt-dlp options."""
+        # Get rotating user-agent and optional proxy
+        proxy_opts = get_yt_dlp_proxy_opts()
+
         opts: dict[str, Any] = {
             "noplaylist": True,
             "no_warnings": True,
@@ -65,14 +86,9 @@ class MediaDownloader:
             "socket_timeout": 30,
             "retries": 3,
             "fragment_retries": 3,
-            "http_headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/131.0.0.0 Safari/537.36"
-                ),
-            },
         }
+        # Merge proxy/UA opts (http_headers, proxy)
+        opts.update(proxy_opts)
 
         # Add cookies file if configured (manual takes priority)
         if COOKIES_FILE and os.path.exists(COOKIES_FILE):
@@ -218,7 +234,7 @@ class MediaDownloader:
     async def _execute_download(
         self, url: str, opts: dict[str, Any], media_type: str
     ) -> DownloadResult:
-        """Execute the download with timeout."""
+        """Execute the download with timeout and fallback scraper."""
         try:
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
@@ -226,6 +242,16 @@ class MediaDownloader:
                 ),
                 timeout=DOWNLOAD_TIMEOUT,
             )
+
+            # If yt-dlp failed, try fallback scraper
+            if not result.success and FALLBACK_SCRAPER_ENABLED:
+                logger.info("yt-dlp failed for %s, trying fallback scraper", url)
+                fallback = await asyncio.get_event_loop().run_in_executor(
+                    None, self._fallback_download, url, media_type, 0
+                )
+                if fallback.success:
+                    return fallback
+
             return result
         except asyncio.TimeoutError:
             logger.error("Download timeout for %s", url)
@@ -381,6 +407,86 @@ class MediaDownloader:
             return DownloadResult(
                 success=False,
                 error=f"Unexpected error: {str(e)[:200]}",
+                media_type=media_type,
+            )
+
+    def _fallback_download(
+        self, url: str, media_type: str, user_id: int = 0
+    ) -> DownloadResult:
+        """Fallback: scrape page for direct media URLs using BeautifulSoup.
+
+        Called when yt-dlp fails. Attempts to find direct mp4/m4a/webm
+        URLs in the page HTML via <video>, <source>, OG tags, and scripts.
+        """
+        logger.info("Attempting fallback scraper for %s", url)
+
+        scraped = scrape_media_urls(url)
+        if not scraped:
+            return DownloadResult(
+                success=False,
+                error="Fallback scraper found no media on this page.",
+                media_type=media_type,
+            )
+
+        # Pick the best matching result based on media_type
+        target = None
+        for item in scraped:
+            if item.media_type == media_type:
+                target = item
+                break
+        if not target:
+            target = scraped[0]
+
+        if not target.url:
+            return DownloadResult(
+                success=False,
+                error="Fallback scraper found no downloadable media.",
+                media_type=media_type,
+            )
+
+        # Download the direct URL
+        try:
+            ext = "mp4" if target.media_type == "video" else "mp3"
+            out_path = str(DOWNLOAD_DIR / f"{user_id}_fallback_{hash(url) & 0xFFFFFF:06x}.{ext}")
+
+            resp = requests.get(
+                target.url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=DOWNLOAD_TIMEOUT,
+                stream=True,
+            )
+            resp.raise_for_status()
+
+            with open(out_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            file_size = os.path.getsize(out_path)
+            if file_size > MAX_FILE_SIZE:
+                os.remove(out_path)
+                return DownloadResult(
+                    success=False,
+                    error=(
+                        f"File is too large ({file_size / (1024*1024):.1f} MB). "
+                        f"Telegram limit is {MAX_FILE_SIZE / (1024*1024):.0f} MB."
+                    ),
+                    media_type=media_type,
+                )
+
+            return DownloadResult(
+                success=True,
+                file_path=out_path,
+                title=sanitize_filename(target.title),
+                file_size=file_size,
+                thumbnail=target.thumbnail,
+                media_type=target.media_type,
+            )
+
+        except Exception as e:
+            logger.error("Fallback download failed: %s", e)
+            return DownloadResult(
+                success=False,
+                error=f"Fallback download failed: {str(e)[:200]}",
                 media_type=media_type,
             )
 

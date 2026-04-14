@@ -69,3 +69,17 @@ BROWSER_COOKIES_ENABLED = os.getenv("BROWSER_COOKIES_ENABLED", "true").lower() i
     "yes",
 )
 BROWSER_COOKIES_PATH = BASE_DIR / "data" / "youtube_cookies.txt"
+
+# Proxy rotation (optional)
+# Path to a text file with one proxy per line (http://host:port or socks5://host:port)
+PROXY_FILE = os.getenv("PROXY_FILE", "")
+
+# Fallback scraper (when yt-dlp fails)
+FALLBACK_SCRAPER_ENABLED = os.getenv("FALLBACK_SCRAPER_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
+# Download queue concurrency
+MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))

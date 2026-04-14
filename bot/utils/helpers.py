@@ -4,6 +4,7 @@ import re
 from urllib.parse import urlparse
 
 from bot.config import SUPPORTED_PLATFORMS
+from bot.utils.url_validator import validate_url, URLValidationResult
 
 
 def extract_urls(text: str) -> list[str]:
@@ -25,6 +26,15 @@ def detect_platform(url: str) -> str | None:
             if domain == d or domain.endswith("." + d):
                 return platform
     return None
+
+
+def validate_and_detect(url: str) -> URLValidationResult:
+    """Validate a URL with platform-specific regex and extract content info.
+
+    Enhanced version of detect_platform that also returns URL type
+    (video, shorts, reel, etc.) and content ID when possible.
+    """
+    return validate_url(url)
 
 
 def format_file_size(size_bytes: int) -> str:
