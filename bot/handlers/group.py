@@ -4,6 +4,7 @@ from telegram import Update, ChatMemberUpdated
 from telegram.constants import ChatMemberStatus, ChatType
 from telegram.ext import ContextTypes
 
+from bot.config import BOT_LOGO
 from bot.database.db import add_group, remove_group, upsert_user, is_user_banned
 from bot.utils.helpers import extract_urls, detect_platform
 from bot.utils.logger import logger
@@ -33,17 +34,30 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         add_group(chat.id, chat.title or "Unknown", added_by)
         logger.info("Bot added to group: %s (%s) by user %s", chat.title, chat.id, added_by)
 
+        welcome_text = (
+            "\U0001f44b <b>Hello!</b>\n\n"
+            "I'm <b>Media Magic Bot</b> \U0001f3ac\n"
+            "Send me a video/media link and I'll download it for you!\n\n"
+            "\U0001f310 <b>Supported:</b> YouTube, TikTok, Instagram, "
+            "Facebook, Twitter/X, Pinterest, Reddit & more!\n\n"
+            "Use /help for more info."
+        )
+
         try:
-            await context.bot.send_message(
-                chat_id=chat.id,
-                text=(
-                    "\U0001f44b <b>Hello!</b>\n\n"
-                    "I'm <b>Media Magic Bot</b> \U0001f3ac\n"
-                    "Send me a video/media link and I'll download it for you!\n\n"
-                    "Use /help for more info."
-                ),
-                parse_mode="HTML",
-            )
+            if BOT_LOGO.exists():
+                with open(BOT_LOGO, "rb") as logo:
+                    await context.bot.send_photo(
+                        chat_id=chat.id,
+                        photo=logo,
+                        caption=welcome_text,
+                        parse_mode="HTML",
+                    )
+            else:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=welcome_text,
+                    parse_mode="HTML",
+                )
         except Exception as e:
             logger.warning("Failed to send welcome message to group %s: %s", chat.id, e)
 

@@ -3,7 +3,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from bot.config import OWNER_ID, SUPPORTED_PLATFORMS
+from bot.config import OWNER_ID, SUPPORTED_PLATFORMS, BOT_LOGO
 from bot.database.db import upsert_user, is_user_banned
 from bot.utils.logger import logger
 
@@ -65,11 +65,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        welcome_text,
-        parse_mode="HTML",
-        reply_markup=reply_markup,
-    )
+    if BOT_LOGO.exists():
+        try:
+            with open(BOT_LOGO, "rb") as logo:
+                await update.message.reply_photo(
+                    photo=logo,
+                    caption=welcome_text,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+        except Exception:
+            await update.message.reply_text(
+                welcome_text,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+    else:
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+        )
     logger.info("User %s (%s) started the bot", update.effective_user.id, user_name)
 
 

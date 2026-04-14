@@ -2,6 +2,7 @@
 
 import os
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +11,11 @@ import yt_dlp
 from bot.config import (
     AUDIO_FORMAT,
     AUDIO_QUALITY,
+    COOKIES_FILE,
     DOWNLOAD_DIR,
     DOWNLOAD_TIMEOUT,
     MAX_FILE_SIZE,
+    POT_SERVER_URL,
     VIDEO_QUALITIES,
 )
 from bot.utils.helpers import sanitize_filename
@@ -48,10 +51,11 @@ class MediaDownloader:
 
     def __init__(self) -> None:
         DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        self._node_path = shutil.which("node")
 
     def _get_base_opts(self) -> dict[str, Any]:
         """Get base yt-dlp options."""
-        return {
+        opts: dict[str, Any] = {
             "noplaylist": True,
             "no_warnings": True,
             "quiet": True,
@@ -63,15 +67,44 @@ class MediaDownloader:
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 ),
             },
         }
+
+        # Add cookies file if configured
+        if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+            opts["cookiefile"] = COOKIES_FILE
+
+        return opts
+
+    def _get_youtube_opts(self) -> dict[str, Any]:
+        """Get YouTube-specific yt-dlp options for bot detection bypass."""
+        opts: dict[str, Any] = {}
+        extractor_args: list[str] = []
+
+        # Configure PO Token server if available
+        if POT_SERVER_URL:
+            extractor_args.append(f"getpot_bgutil_baseurl={POT_SERVER_URL}")
+
+        if extractor_args:
+            opts["extractor_args"] = {"youtube": extractor_args}
+
+        return opts
+
+    @staticmethod
+    def _is_youtube_url(url: str) -> bool:
+        """Check if a URL is a YouTube URL."""
+        youtube_domains = ["youtube.com", "youtu.be"]
+        return any(domain in url.lower() for domain in youtube_domains)
 
     async def get_info(self, url: str) -> dict[str, Any] | None:
         """Get media information without downloading."""
         opts = self._get_base_opts()
         opts["skip_download"] = True
+
+        if self._is_youtube_url(url):
+            opts.update(self._get_youtube_opts())
 
         try:
             info = await asyncio.wait_for(
@@ -118,6 +151,9 @@ class MediaDownloader:
             }
         )
 
+        if self._is_youtube_url(url):
+            opts.update(self._get_youtube_opts())
+
         return await self._execute_download(url, opts, "video")
 
     async def download_audio(self, url: str, user_id: int = 0) -> DownloadResult:
@@ -141,6 +177,9 @@ class MediaDownloader:
             }
         )
 
+        if self._is_youtube_url(url):
+            opts.update(self._get_youtube_opts())
+
         return await self._execute_download(url, opts, "audio")
 
     async def download_thumbnail(self, url: str, user_id: int = 0) -> DownloadResult:
@@ -163,6 +202,9 @@ class MediaDownloader:
                 ],
             }
         )
+
+        if self._is_youtube_url(url):
+            opts.update(self._get_youtube_opts())
 
         return await self._execute_download(url, opts, "photo")
 
@@ -288,6 +330,30 @@ class MediaDownloader:
                 return DownloadResult(
                     success=False,
                     error="This content is unavailable or has been removed.",
+                    media_type=media_type,
+                )
+            # YouTube bot detection - provide helpful message
+            if "Sign in to confirm" in error_msg or "confirm you're not a bot" in error_msg:
+                return DownloadResult(
+                    success=False,
+                    error=(
+                        "\u26a0\ufe0f YouTube requires authentication from this server.\n\n"
+                        "The bot owner needs to provide a cookies.txt file "
+                        "to enable YouTube downloads.\n\n"
+                        "Other platforms (TikTok, Instagram, etc.) work normally!"
+                    ),
+                    media_type=media_type,
+                )
+            # Age-restricted content
+            if "age" in error_msg.lower() and (
+                "restrict" in error_msg.lower() or "gate" in error_msg.lower()
+            ):
+                return DownloadResult(
+                    success=False,
+                    error=(
+                        "This content is age-restricted. "
+                        "A cookies.txt file with a logged-in account is needed."
+                    ),
                     media_type=media_type,
                 )
             return DownloadResult(

@@ -13,6 +13,13 @@ OWNER_ID = 6570434162
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "data" / "bot.db"
 
+# Bot assets
+ASSETS_DIR = BASE_DIR / "assets"
+BOT_LOGO = ASSETS_DIR / "bot_logo.jpg"
+
+# Cookies file for YouTube authentication (optional)
+COOKIES_FILE = os.getenv("COOKIES_FILE", "")
+
 # Download settings
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB (Telegram limit)
 DOWNLOAD_DIR = BASE_DIR / "downloads"
@@ -51,3 +58,6 @@ MAX_DOWNLOADS_PER_DAY = 50
 # Logging
 LOG_DIR = BASE_DIR / "logs"
 LOG_FILE = LOG_DIR / "bot.log"
+
+# PO Token server URL for YouTube (optional)
+POT_SERVER_URL = os.getenv("POT_SERVER_URL", "")

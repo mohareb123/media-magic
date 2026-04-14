@@ -19,8 +19,10 @@ COPY . /app/bot/
 # Create directories for data and downloads
 RUN mkdir -p /app/bot/data /app/bot/downloads /app/bot/logs
 
-# Set environment variable placeholder
+# Set environment variable placeholders
 ENV TELEGRAM_BOT_TOKEN=""
+ENV COOKIES_FILE=""
+ENV POT_SERVER_URL=""
 
 # Run the bot from the parent directory so 'bot' is a package
 CMD ["python", "-m", "bot.main"]

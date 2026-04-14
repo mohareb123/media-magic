@@ -5,7 +5,7 @@ import hashlib
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from bot.config import MAX_DOWNLOADS_PER_DAY, OWNER_ID
+from bot.config import MAX_DOWNLOADS_PER_DAY, OWNER_ID, BOT_LOGO
 from bot.database.db import (
     is_user_banned,
     record_download,
@@ -230,6 +230,8 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             minutes, seconds = divmod(result.duration, 60)
             caption += f"\n\u23f1 Duration: {minutes}:{seconds:02d}"
 
+        caption += "\n\n\U0001f916 <b>Media Magic Bot</b> | @Nsr7Memobot"
+
         if result.file_path:
             with open(result.file_path, "rb") as f:
                 if media_type == "audio":
@@ -252,6 +254,22 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         parse_mode="HTML",
                         supports_streaming=True,
                     )
+
+        # Send bot logo after successful download
+        if BOT_LOGO.exists():
+            try:
+                with open(BOT_LOGO, "rb") as logo:
+                    await query.message.reply_photo(
+                        photo=logo,
+                        caption=(
+                            "\u2705 <b>Download completed successfully!</b>\n"
+                            "\U0001f916 <b>Media Magic Bot</b> | @Nsr7Memobot\n"
+                            "\U0001f4e5 Send another link to download more!"
+                        ),
+                        parse_mode="HTML",
+                    )
+            except Exception as e:
+                logger.warning("Failed to send bot logo: %s", e)
 
         # Update status
         update_download_status(download_id, "completed", file_size=result.file_size)
