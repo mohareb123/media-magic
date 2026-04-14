@@ -619,6 +619,7 @@ function isSafeUrl(urlString: string): boolean {
       hostname === '0.0.0.0' ||
       hostname === '::1' ||
       hostname === '[::1]' ||
+      hostname.startsWith('[') ||
       hostname.startsWith('10.') ||
       hostname.startsWith('192.168.') ||
       hostname.startsWith('169.254.') ||
