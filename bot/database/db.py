@@ -198,7 +198,7 @@ def get_user_download_count_today(user_id: int) -> int:
         row = conn.execute(
             """
             SELECT COUNT(*) as count FROM downloads
-            WHERE user_id = ? AND created_at >= ? AND status = 'completed'
+            WHERE user_id = ? AND created_at >= ? AND status IN ('completed', 'pending')
             """,
             (user_id, today_start),
         ).fetchone()

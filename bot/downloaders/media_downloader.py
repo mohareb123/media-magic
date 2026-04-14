@@ -246,8 +246,11 @@ class MediaDownloader:
             # If yt-dlp failed, try fallback scraper
             if not result.success and FALLBACK_SCRAPER_ENABLED:
                 logger.info("yt-dlp failed for %s, trying fallback scraper", url)
-                fallback = await asyncio.get_event_loop().run_in_executor(
-                    None, self._fallback_download, url, media_type, user_id
+                fallback = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, self._fallback_download, url, media_type, user_id
+                    ),
+                    timeout=DOWNLOAD_TIMEOUT,
                 )
                 if fallback.success:
                     return fallback
@@ -484,6 +487,11 @@ class MediaDownloader:
 
         except Exception as e:
             logger.error("Fallback download failed: %s", e)
+            if os.path.exists(out_path):
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    pass
             return DownloadResult(
                 success=False,
                 error=f"Fallback download failed: {str(e)[:200]}",
