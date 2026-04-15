@@ -106,12 +106,17 @@ class MediaDownloader:
         opts: dict[str, Any] = {}
         extractor_args: list[str] = []
 
+        # Use mobile/android player clients to bypass bot detection on server IPs.
+        # The default web client triggers "Sign in to confirm you're not a bot"
+        # on data center IPs, but mweb and android clients use different API
+        # endpoints that don't have this restriction.
+        extractor_args.append("player_client=mweb,android")
+
         # Configure PO Token server if available
         if POT_SERVER_URL:
             extractor_args.append(f"getpot_bgutil_baseurl={POT_SERVER_URL}")
 
-        if extractor_args:
-            opts["extractor_args"] = {"youtube": extractor_args}
+        opts["extractor_args"] = {"youtube": extractor_args}
 
         return opts
 
